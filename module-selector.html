@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"
+        integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Module Selection</title>
+    <style>
+        #loading {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 1.5rem;
+            color: #3498db;
+            z-index: 500;
+        }
+
+        #loading-spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3498db;
+            border-radius: 50%;
+            width: 5rem;
+            height: 5rem;
+            animation: spin 2s linear infinite;
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="container w-100 my-5">
+        <div id="progress-bar" class="p-3 mb-2 bg-body-secondary">
+            No Build Logs
+        </div>
+        <h4 id="content-title">Module Selection</h4>
+        <button id="build-btn" class="btn btn-success">Build Selected Modules</button>
+        <button id="halt-build-btn" disabled class="btn btn-danger">Halt Build</button>
+
+        <div id="loading">
+            <div id="loading-spinner">
+                <div class="spinner-grow" role="status">
+                    <span class="visually-hidden">Building...</span>
+                </div>
+            </div>
+        </div>
+        <div id="modules-container" class="d-flex justify-content-center flex-wrap my-3"></div>
+    </div>
+
+    <script>
+        const modulesContainer = document.getElementById('modules-container');
+        const buildButton = document.getElementById('build-btn');
+        const haltBuildButton = document.getElementById('halt-build-btn');
+        const loadingElement = document.getElementById('loading');
+        const contentTitle = document.getElementById("content-title");
+        // Disable build button initially
+        buildButton.disabled = true;
+
+        const progressContainer = document.createElement('div');
+
+        // Retrieve paths from the main process (sourceTar and destinationPath)
+        window.electron.getPaths().then(({ sourcePath, destinationPath }) => {
+            console.log('Source Path:', sourcePath);
+            console.log('Destination Path:', destinationPath);
+
+            if(!sourcePath || !destinationPath) {
+                alert('Failed to get source and destination paths. Please try again.');
+                return;
+            }
+        });
+
+        // Load modules from main process
+        window.electron.onLoadModules((modules) => {
+            if (!modules || typeof modules !== 'object') {
+                alert('Failed to load modules. Please try again.');
+                return;
+            }
+
+            modulesContainer.innerHTML = ''; // Clear any previous modules
+            for (const [module, subModules] of Object.entries(modules)) {
+                const moduleDiv = document.createElement('div');
+                moduleDiv.setAttribute('class', "m-1");
+                const moduleHeader = document.createElement('h5');
+                moduleHeader.textContent = module;
+
+                const subModuleList = document.createElement('ul');
+                subModuleList.setAttribute('class', "list-group list-group-flush");
+                subModules.forEach((subModule) => {
+                    // skip the module if it the subModule name ends with root-config and shared
+                    if (subModule.endsWith('root-config') || subModule.endsWith('shared')) {
+                        return;
+                    }
+                    const li = document.createElement('li');
+                    li.setAttribute('class', "list-group-item");
+                    const checkbox = document.createElement('input');
+                    checkbox.setAttribute('class', "form-check-input mx-2");
+                    checkbox.type = 'checkbox';
+                    checkbox.value = `${module}/${subModule}`;
+                    checkbox['data-module'] = module;
+                    li.appendChild(checkbox);
+                    const label = document.createElement('label');
+                    label.textContent = subModule;
+                    li.appendChild(label);
+
+                    subModuleList.appendChild(li);
+                });
+
+                moduleDiv.appendChild(moduleHeader);
+                moduleDiv.appendChild(subModuleList);
+                modulesContainer.appendChild(moduleDiv);
+            }
+        });
+
+        // Enable build button if any module is selected
+        modulesContainer.addEventListener('change', () => {
+            const isAnyModuleSelected = modulesContainer.querySelectorAll('input[type="checkbox"]:checked').length > 0;
+            buildButton.disabled = !isAnyModuleSelected;
+        });
+
+        // Listen for progress updates
+        window.electron.on('update-progress', (progressUpdate) => {
+            const { type, moduleName, message, progress } = progressUpdate;
+
+            let progressMessage = document.querySelector(`#progress-bar`);
+            if (!progressMessage) {
+                progressMessage = document.createElement('div');
+                progressMessage.id = `progress-${moduleName}`;
+                progressContainer.appendChild(progressMessage);
+            }
+
+            // Update the message
+            progressMessage.textContent = `${message} ${progress ? `(${progress}%)` : ''
+                }`;
+
+            // Add styles for success, error, or info
+            progressMessage.style.color =
+                type === 'error' ? 'red' : type === 'success' ? 'green' : 'black';
+        });
+
+        function showLoading() {
+            loadingElement.style.display = 'block';  // Show spinner
+        }
+
+        // Hide the loading spinner
+        function hideLoading() {
+            loadingElement.style.display = 'none';  // Hide spinner
+        }
+
+        // Halt the build process
+        haltBuildButton.addEventListener('click', async () => {
+            try {
+                const res = await window.electron.haltBuild();
+                if (res.success){
+                    console.log('Build process halted successfully.');
+                    hideLoading();
+                    alert('Build process halted successfully.');
+                } else {
+                    alert(`Error: ${res.error}`);
+                }
+            } catch (error) {
+                alert(`Error: ${error.message}`);
+            }
+        });
+
+        // Build selected modules
+        buildButton.addEventListener('click', async () => {
+            const selectedValues = Array.from(
+                modulesContainer.querySelectorAll('input[type="checkbox"]:checked')
+            ).map((checkbox) => checkbox.value);
+
+            // prepare an object with module as keys and submodules as values array
+            const selectedModulesObj = {};
+            selectedValues.forEach((module) => {
+                const [moduleName, subModuleName] = module.split('/');
+                if (selectedModulesObj[moduleName]) {
+                    selectedModulesObj[moduleName].push(subModuleName);
+                } else {
+                    selectedModulesObj[moduleName] = [subModuleName];
+                }
+            });
+
+
+            if (Object.keys(selectedModulesObj).length === 0) {
+                alert('Please select at least one module to build.');
+                return;
+            }
+
+            buildButton.textContent = 'Building...'; // Indicate that the process has started
+            buildButton.disabled = true;
+
+            showLoading();
+
+            try {
+                // Get the source and destination paths from the main process
+                const { sourcePath, destinationPath } = await window.electron.getPaths();
+
+                contentTitle.textContent = "Module Build In Progress";
+                haltBuildButton.disabled = false;
+                // Extract the selected modules
+                const result = await window.electron.startBuild({ sourcePath, destinationPath, selectedModulesObj });
+                
+                if (result.success) {
+                    alert(`Build artifacts are generated at: ${destinationPath}`);
+                } else {
+                    alert(`Error: ${result.error}`);
+                }
+            } catch (error) {
+                alert(`Error: ${error.message}`);
+            } finally {
+                contentTitle.textContent = "Module Build Completed"; 
+                buildButton.textContent = 'Build Selected Modules';
+                buildButton.disabled = false;
+                hideLoading();
+            }
+        });
+    </script>
+</body>
+
+</html>

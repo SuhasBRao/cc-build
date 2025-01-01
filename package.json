@@ -1,0 +1,20 @@
+{
+  "name": "cc-build",
+  "version": "1.0.0",
+  "description": "An app to manage sterling next gen call center extensions",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "run-app": "npx electronmon .",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Suhas B Rao",
+  "license": "ISC",
+  "devDependencies": {
+    "electron": "^33.2.1"
+  },
+  "dependencies": {
+    "rimraf": "^3.0.2",
+    "tar": "^7.4.3"
+  }
+}
