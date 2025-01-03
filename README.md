@@ -14,7 +14,7 @@ This project is an Electron-based desktop application used to generate Sterling 
 To install the necessary dependencies, run the following command:
 
 ```bash
-npm install
+npm install / yarn install
 ```
 You would need gitbash to run the commands in your local
 
@@ -23,7 +23,7 @@ You would need gitbash to run the commands in your local
 To start the application, use the following command:
 
 ```bash
-npm start
+yarn run-app
 ```
 
 ## Features
